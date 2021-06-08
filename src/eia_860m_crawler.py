@@ -15,8 +15,8 @@ class Form860MCrawler():
         self.start_month = args.start.month
         self.start_year = args.start.year
 
-        self.end_month = datetime.datetime.today().date().month - 3
-        self.end_year = datetime.datetime.today().date().year
+        self.end_month = args.end.month
+        self.end_year = args.end.year
 
         month_iter, year_iter = self.start_month, self.start_year
 
@@ -48,25 +48,40 @@ class Form860MCrawler():
             with open(file_name, 'wb') as file:
                 file.write(response.content)
             excel_file = pd.ExcelFile(file_name)
-
-            skip_row_num = settings.SKIP_ROW_MAPPING[year]
-
+            skip_row_num = 1
             sheet_dfs = []
             for sheet in settings.SHEETS:
                 temp_df = excel_file.parse(sheet, skiprows=skip_row_num)
                 temp_df.drop(temp_df.tail(1).index, inplace=True)
+                # change column name to "Sector" from "Sector Name"
+                temp_df.rename(columns=lambda x: "Sector" if x == "Sector Name" else x, inplace=True)
+                # strip the space out of column names
                 temp_df.rename(columns=lambda x: x.strip(), inplace=True)
                 temp_df['sheet_type'] = sheet
                 sheet_dfs.append(temp_df)
 
-            full_df = pd.concat(sheet_dfs)
+            full_df = pd.concat(sheet_dfs, axis=0, ignore_index=True)
             full_df['unique_id'] = full_df.apply(
                 lambda row: str(int(row['Plant ID'])) + '_' + str(row['Plant Name']) + '_' + str(row['Generator ID']),
                 axis=1
             )
             full_df.set_index('unique_id', inplace=True)
 
-            # TO-DO: Check that dataframe contains all needed columns, if not, add empty columns
+            # Check that dataframe contains all needed columns, if not, add empty columns
+            if 'Unit Code' not in full_df.columns:
+                full_df['Unit Code'] = ""
+            if 'Nameplate Capacity (MW)' not in full_df.columns:
+                full_df['Nameplate Capacity (MW)'] = ""
+            if 'Net Winter Capacity (MW)' not in full_df.columns:
+                full_df['Net Winter Capacity (MW)'] = ""
+            if 'County' not in full_df.columns:
+                full_df['County'] = ""
+            if 'Latitude' not in full_df.columns:
+                full_df['Latitude'] = ""
+            if 'Longitude' not in full_df.columns:
+                full_df['Longitude'] = ""
+            if 'Balancing Authority Code' not in full_df.columns:
+                full_df['Balancing Authority Code'] = ""
 
         else:
             raise
@@ -76,55 +91,60 @@ class Form860MCrawler():
     def update_master(self, filing_df, month, year):
         master_df = self.master_df
         for index, row in filing_df.iterrows():
+            cur_status = row['Status']
+
             if index in master_df.index:
+                old_status = master_df.at[index, 'Status']
                 # TO-DO: Fetch and assign variables such as 'Status' once, for later reference
                 #        Construct month + year value ahead of time for later reference
 
                 master_df.at[index, 'Entity ID'] = row['Entity ID']
                 master_df.at[index, 'Entity Name'] = row['Entity Name']
-                # master_df.at[index, 'Sector'] = row['Sector']
-                # master_df.at[index, 'Unit Code'] = row['Unit Code']
+                master_df.at[index, 'Sector'] = row['Sector']
+                master_df.at[index, 'Unit Code'] = row['Unit Code']
                 master_df.at[index, 'Plant State'] = row['Plant State']
-                # master_df.at[index, 'Nameplate Capacity (MW)'] = row['Nameplate Capacity (MW)']
+                master_df.at[index, 'Nameplate Capacity (MW)'] = row['Nameplate Capacity (MW)']
                 master_df.at[index, 'Net Summer Capacity (MW)'] = row['Net Summer Capacity (MW)']
-                # master_df.at[index, 'Net Winter Capacity (MW)'] = row['Net Winter Capacity (MW)']
+                master_df.at[index, 'Net Winter Capacity (MW)'] = row['Net Winter Capacity (MW)']
                 master_df.at[index, 'Technology'] = row['Technology']
                 master_df.at[index, 'Energy Source Code'] = row['Energy Source Code']
                 master_df.at[index, 'Prime Mover Code'] = row['Prime Mover Code']
-                # master_df.at[index, 'County'] = row['County']
-                # master_df.at[index, 'Latitude'] = row['Latitude']
-                # master_df.at[index, 'Longitude'] = row['Longitude']
-                # master_df.at[index, 'Balancing Authority Code'] = row['Balancing Authority Code']
+                master_df.at[index, 'County'] = row['County']
+                master_df.at[index, 'Latitude'] = row['Latitude']
+                master_df.at[index, 'Longitude'] = row['Longitude']
+                master_df.at[index, 'Balancing Authority Code'] = row['Balancing Authority Code']
 
+                # Genrators are in service
                 if row['sheet_type'] == 'Operating':
                     master_df.at[index, 'Operating Month'] = row['Operating Month']
                     master_df.at[index, 'Operating Year'] = row['Operating Year']
                     master_df.at[index, 'Planned Retirement Month'] = row['Planned Retirement Month']
                     master_df.at[index, 'Planned Retirement Year'] = row['Planned Retirement Year']
-                    if master_df.at[index, 'Status'] != row['Status']:
-
+                    if old_status != cur_status:
                         # # change status from 'Planned' statuses
-                        if master_df.at[index, 'Status'] in ['(P) Planned for installation, but regulatory approvals not initiated', '(L) Regulatory approvals pending. Not under construction', '(T) Regulatory approvals received. Not under construction', '(U) Under construction, less than or equal to 50 percent complete', '(V) Under construction, more than 50 percent complete', '(TS) Construction complete, but not yet in commercial operation', '(OT) Other']:
-                            if master_df.at[index, 'Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
-                                master_df.at[index, 'Status P End'] = str(month) + ' ' + str(year)
+                        # if old_status in ['(P) Planned for installation, but regulatory approvals not initiated', '(L) Regulatory approvals pending. Not under construction', '(T) Regulatory approvals received. Not under construction', '(U) Under construction, less than or equal to 50 percent complete', '(V) Under construction, more than 50 percent complete', '(TS) Construction complete, but not yet in commercial operation', '(OT) Other']:
+                        if old_status == "(P) Planned for installation, but regulatory approvals not initiated":
+                            master_df.at[index, 'Status P End'] = str(month) + ' ' + str(year)
 
-                            elif master_df.at[index, 'Status'] == "(L) Regulatory approvals pending. Not under construction":
-                                master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(L) Regulatory approvals pending. Not under construction":
+                            master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
 
-                            elif master_df.at[index, 'Status'] == "(T) Regulatory approvals received. Not under construction":
-                                master_df.at[index, 'Status T End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(T) Regulatory approvals received. Not under construction":
+                            master_df.at[index, 'Status T End'] = str(month) + ' ' + str(year)
 
-                            elif master_df.at[index, 'Status'] == "(U) Under construction, less than or equal to 50 percent complete":
-                                master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(U) Under construction, less than or equal to 50 percent complete":
+                            master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
 
-                            elif master_df.at[index, 'Status'] == "(V) Under construction, more than 50 percent complete":
-                                master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(V) Under construction, more than 50 percent complete":
+                            master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
 
-                            elif master_df.at[index, 'Status'] == "(TS) Construction complete, but not yet in commercial":
-                                master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                            master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
+                        elif old_status == '(OT) Other':
+                            master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
+                        # other status changes will be statuses from the Opertaing, Retired, and Canceled or Postponed sheet => retired, canceled or postponed, (SB) Standby/Backup: available for service but not normally used, (OS) Out of service and NOT expected to return to service in next calendar year, (OA) Out of service but expected to return to service in next calendar year
 
-                        # change status from 'Operating' or other statuses
-                        master_df.at[index, 'Status'] = row['Status']
+                        master_df.at[index, 'Status'] = cur_status
 
 
                 elif row['sheet_type'] == 'Planned':
@@ -144,117 +164,120 @@ class Form860MCrawler():
                             master_df.at[index, 'Planned Operation Delta (months)'] = diff
 
                     # change of status
-                    if master_df.at[index, 'Status'] != row['Status']:
+                    if old_status != row['Status']:
                         # if previous status is in '(P) Planned for installation, but regulatory approvals not initiated', then change of status means phase P has ended
-                        if master_df.at[index, 'Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
+                        if old_status == "(P) Planned for installation, but regulatory approvals not initiated":
                             master_df.at[index, 'Status P End'] = str(month) + ' ' + str(year)
                             # if new status is in '(L) Regulatory approvals pending. Not under construction', then that means phase L has started
-                            if row['Status'] == "(L) Regulatory approvals pending. Not under construction":
+                            if cur_status == "(L) Regulatory approvals pending. Not under construction":
                                 master_df.at[index, 'Status L Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(T) Regulatory approvals received. Not under construction":
+                            elif cur_status == "(T) Regulatory approvals received. Not under construction":
                                 master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(U) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(V) Under construction, more than 50 percent complete":
+                            elif cur_status == "(V) Under construction, more than 50 percent complete":
                                 master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(TS) Construction complete, but not yet in commercial operation":
+                            elif cur_status == "(TS) Construction complete, but not yet in commercial operation":
                                 master_df.at[index, 'Status TS Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(OT) Other":
+                                master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-
-                        elif master_df.at[index, 'Status'] == "(L) Regulatory approvals pending. Not under construction":
+                        elif old_status == "(L) Regulatory approvals pending. Not under construction":
                             master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
-                            if row['Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
+                            if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(T) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(T) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(U) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(V) Under construction, more than 50 percent complete":
+                            elif cur_status == "(V) Under construction, more than 50 percent complete":
                                 master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(TS) Construction complete, but not yet in commercial operation":
+                            elif cur_status == "(TS) Construction complete, but not yet in commercial operation":
                                 master_df.at[index, 'Status TS Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(OT) Other":
+                                master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-                        elif master_df.at[index, 'Status'] == "(T) Regulatory approvals received. Not under construction":
+                        elif old_status == "(T) Regulatory approvals received. Not under construction":
                             master_df.at[index, 'Status T End'] = str(month) + ' ' + str(year)
-                            if row['Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
+                            if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(L) Regulatory approvals pending. Not under construction":
+                            elif cur_status == "(L) Regulatory approvals pending. Not under construction":
                                 master_df.at[index, 'Status L Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(U) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(V) Under construction, more than 50 percent complete":
+                            elif cur_status == "(V) Under construction, more than 50 percent complete":
                                 master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(TS) Construction complete, but not yet in commercial operation":
+                            elif cur_status == "(TS) Construction complete, but not yet in commercial operation":
                                 master_df.at[index, 'Status TS Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(OT) Other":
+                                master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-                        elif master_df.at[index, 'Status'] == "(U) Under construction, less than or equal to 50 percent complete":
+                        elif old_status == "(U) Under construction, less than or equal to 50 percent complete":
                             master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
-                            if row['Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
+                            if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(L) Regulatory approvals pending. Not under construction":
+                            elif cur_status == "(L) Regulatory approvals pending. Not under construction":
                                 master_df.at[index, 'Status L Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(T) Regulatory approvals received. Not under construction":
+                            elif cur_status == "(T) Regulatory approvals received. Not under construction":
                                 master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(V) Under construction, more than 50 percent complete":
+                            elif cur_status == "(V) Under construction, more than 50 percent complete":
                                 master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(TS) Construction complete, but not yet in commercial operation":
+                            elif cur_status == "(TS) Construction complete, but not yet in commercial operation":
                                 master_df.at[index, 'Status TS Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(OT) Other":
+                                master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
 
-                        elif master_df.at[index, 'Status'] == "(V) Under construction, more than 50 percent complete":
+                        elif old_status == "(V) Under construction, more than 50 percent complete":
                             master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
-                            if row['Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
+                            if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(L) Regulatory approvals pending. Not under construction":
+                            elif cur_status == "(L) Regulatory approvals pending. Not under construction":
                                 master_df.at[index, 'Status L Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(T) Regulatory approvals received. Not under construction":
+                            elif cur_status == "(T) Regulatory approvals received. Not under construction":
                                 master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(U) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(TS) Construction complete, but not yet in commercial operation":
+                            elif cur_status == "(TS) Construction complete, but not yet in commercial operation":
                                 master_df.at[index, 'Status TS Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(OT) Other":
+                                master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-
-                        elif master_df.at[index, 'Status'] == "(TS) Construction complete, but not yet in commercial":
+                        elif old_status == "(TS) Construction complete, but not yet in commercial":
                             master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
-                            if row['Status'] == "(P) Planned for installation, but regulatory approvals not initiated":
+                            if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(L) Regulatory approvals pending. Not under construction":
+                            elif cur_status == "(L) Regulatory approvals pending. Not under construction":
                                 master_df.at[index, 'Status L Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(T) Regulatory approvals received. Not under construction":
+                            elif cur_status == "(T) Regulatory approvals received. Not under construction":
                                 master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(U) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
-
-                            elif row['Status'] == "(V) Under construction, more than 50 percent complete":
+                            elif cur_status == "(V) Under construction, more than 50 percent complete":
                                 master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(OT) Other":
+                                master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-                        master_df.at[index, 'Status'] = row['Status']
+                        master_df.at[index, 'Status'] = cur_status
 
                 elif row['sheet_type'] == 'Retired':
+                    # changed from Planned to Retired
+                    if old_status != cur_status:
+                        if old_status == "(P) Planned for installation, but regulatory approvals not initiated":
+                            master_df.at[index, 'Status P End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(L) Regulatory approvals pending. Not under construction":
+                            master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(T) Regulatory approvals received. Not under construction":
+                            master_df.at[index, 'Status T End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(U) Under construction, less than or equal to 50 percent complete":
+                            master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(V) Under construction, more than 50 percent complete":
+                            master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                            master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
+                        elif old_status == '(OT) Other':
+                            master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
+
                     master_df.at[index,'Retirement Month'] = row['Retirement Month']
                     master_df.at[index,'Retirement Year'] = row['Retirement Year']
                     master_df.at[index,'Operating Month'] = row['Operating Month']
@@ -262,6 +285,22 @@ class Form860MCrawler():
                     master_df.at[index, 'Status'] = 'Retired'
 
                 elif row['sheet_type'] == 'Canceled or Postponed':
+                    # change from Planned to Canceled or Postponed
+                    if old_status != cur_status:
+                        if old_status == "(P) Planned for installation, but regulatory approvals not initiated":
+                            master_df.at[index, 'Status P End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(L) Regulatory approvals pending. Not under construction":
+                            master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(T) Regulatory approvals received. Not under construction":
+                            master_df.at[index, 'Status T End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(U) Under construction, less than or equal to 50 percent complete":
+                            master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(V) Under construction, more than 50 percent complete":
+                            master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
+                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                            master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
+                        elif old_status == '(OT) Other':
+                            master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
                     master_df.at[index, 'Status'] = 'Canceled or Postponed'
 
                 master_df = master_df.fillna('')
@@ -271,19 +310,20 @@ class Form860MCrawler():
                 new_row = {
                     'Entity ID': row['Entity ID'], 
                     'Entity Name': row['Entity Name'], 
-                    # 'Unit Code': row['Unit Code'],
-                    # 'Sector': row['Sector'], 
+                    'Unit Code': row['Unit Code'],
+                    'Sector': row['Sector'], 
                     'Plant State': row['Plant State'], 
-                    # 'Nameplate Capacity (MW)': row['Nameplate Capacity (MW)'],
+                    'Nameplate Capacity (MW)': row['Nameplate Capacity (MW)'],
                     'Net Summer Capacity (MW)': row['Net Summer Capacity (MW)'],
-                    # 'Net Winter Capacity (MW)': row['Net Winter Capacity (MW)'], 
+                    'Net Winter Capacity (MW)': row['Net Winter Capacity (MW)'], 
                     'Technology': row['Technology'],
                     'Energy Source Code': row['Energy Source Code'], 
                     'Prime Mover Code': row['Prime Mover Code'], 
-                    # 'County': row['County'], 
-                    # 'Latitude': row['Latitude'], 
-                    # 'Longitude': row['Longitude'], 
-                    # 'Balancing Authority Code': row['Balancing Authority Code']
+                    'County': row['County'], 
+                    'Latitude': row['Latitude'], 
+                    'Longitude': row['Longitude'], 
+                    'Balancing Authority Code': row['Balancing Authority Code'],
+                    'Initial Date': str(month) + ' ' + str(year)
                 }
 
                 if row['sheet_type'] == 'Operating':
@@ -291,19 +331,18 @@ class Form860MCrawler():
                     new_row['Operating Year'] = row['Operating Year']
                     new_row['Planned Retirement Month'] = row['Planned Retirement Month']
                     new_row['Planned Retirement Year'] = row['Planned Retirement Year']
-                    new_row['Status'] = row['Status']
+                    new_row['Status'] = cur_status
+                    new_row['Initial Status'] = cur_status
 
 
                 elif row['sheet_type'] == 'Planned':
                     new_row['OG Planned Operation Month'] = row['Planned Operation Month']
                     new_row['Cur Planned Operation Month'] = row['Planned Operation Month']
-
                     new_row['OG Planned Operation Year'] = row['Planned Operation Year']
                     new_row['Cur Planned Operation Year'] = row['Planned Operation Year']
-
                     new_row['Planned Operation Delta (months)'] = 0
-
-                    new_row['Status'] = row['Status']
+                    new_row['Status'] = cur_status
+                    new_row['Initial Status'] = cur_status
 
                 elif row['sheet_type'] == 'Retired':
                     new_row['Retirement Month'] = row['Retirement Month']
@@ -311,9 +350,11 @@ class Form860MCrawler():
                     new_row['Operating Month'] = row['Operating Month']
                     new_row['Operating Year'] = row['Operating Year']
                     new_row['Status'] = 'Retired'
+                    new_row['Initial Status'] = 'Retired'
 
                 elif row['sheet_type'] == 'Canceled or Postponed':
                     new_row['Status'] = 'Canceled or Postponed'
+                    new_row['Initial Status'] = 'Canceled or Postponed'
 
                 new_series = pd.Series(new_row, name=index)
 
@@ -329,15 +370,20 @@ def init_arg_parser():
 
     arg_parser = argparse.ArgumentParser()
 
-    # TO-DO: Add argument for specifying end date, with default as current
-    #        Add argument for specifying existing spreadsheet to use as 'master_df'
-    #        Add argument for writing 'master_df' to csv after every successful update
 
     arg_parser.add_argument(
         "--start",
         type=lambda s: datetime.datetime.strptime(s, '%m-%Y'),
         help="Month and year to start crawl in the format \'mm-yyyy\'",
         default=datetime.datetime(2015, 7, 1),
+        required=False
+    )
+
+    arg_parser.add_argument(
+        "--end",
+        type=lambda s: datetime.datetime.strptime(s, '%m-%Y'),
+        help="Month and year to start crawl in the format \'mm-yyyy\'",
+        default=datetime.datetime(2015, 8, 1),
         required=False
     )
 
@@ -365,7 +411,7 @@ def main(args):
         crawler.update_master(filing_df, month, year)
         logging.info('Finished updating %s %d', month, year)
 
-    self.master_df.to_csv('master_dataframe.csv')
+    crawler.master_df.to_csv('master_dataframe.csv')
 
 if __name__ == "__main__":
     parser = init_arg_parser()
