@@ -7,11 +7,11 @@ EIA_RECENT_URL = "https://www.eia.gov/electricity/data/eia860m/xls/{}_generator{
 FIELDS = [
     'Entity ID',
     'Entity Name',
-    # 'Sector',
+    'Sector',
     'Plant State',
-    # 'Nameplate Capacity (MW)',
+    'Nameplate Capacity (MW)',
     'Net Summer Capacity (MW)',
-    # 'Net Winter Capacity (MW)',
+    'Net Winter Capacity (MW)',
     'Technology',
     'Energy Source Code',
     'Prime Mover Code',
@@ -39,10 +39,14 @@ FIELDS = [
     'Status V End',
     'Status TS Start',
     'Status TS End',
-    # 'County',
-    # 'Latitude',
-    # 'Longitude',
-    # 'Balancing Authority Code'
+    'Status Other Start',
+    'Status Other End',
+    'County',
+    'Latitude',
+    'Longitude',
+    'Balancing Authority Code',
+    'Initial Status', # the status when the project first reported
+    'Initial Date', # when the project first reported
 ]
 
 SKIP_ROW_MAPPING = {
