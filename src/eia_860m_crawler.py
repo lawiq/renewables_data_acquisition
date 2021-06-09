@@ -21,7 +21,7 @@ class Form860MCrawler():
         month_iter, year_iter = self.start_month, self.start_year
 
         crawl_range = []
-        while month_iter != self.end_month or year_iter != self.end_year:
+        while month_iter <= self.end_month or year_iter <= self.end_year:
             crawl_range.append((calendar.month_name[month_iter], year_iter))
             if month_iter == 12:
                 month_iter = 1
@@ -83,8 +83,8 @@ class Form860MCrawler():
             if 'Balancing Authority Code' not in full_df.columns:
                 full_df['Balancing Authority Code'] = ""
 
-            full_df[['Planned Operation Month']] = full_df[['Planned Operation Month']].fillna('', inplace=True)
-            full_df[['Planned Operation Year']] = full_df[['Planned Operation Year']].fillna('', inplace=True)
+            full_df[['Planned Operation Month']] = full_df[['Planned Operation Month']].fillna('')
+            full_df[['Planned Operation Year']] = full_df[['Planned Operation Year']].fillna('')
 
 
         else:
@@ -94,13 +94,14 @@ class Form860MCrawler():
 
     def update_master(self, filing_df, month, year):
         master_df = self.master_df
-        for index, row in filing_df.iterrows():
-            cur_status = row['Status']
+        for row in filing_df.itertuples():
+            index = row[0]
+            cur_status = row.Status
 
             if index in master_df.index:
                 old_status = master_df.at[index, 'Status']
 
-                master_df.at[index, 'Entity ID'] = row['Entity ID']
+                master_df.at[index, 'Entity ID'] = row.Entity ID
                 master_df.at[index, 'Entity Name'] = row['Entity Name']
                 master_df.at[index, 'Sector'] = row['Sector']
                 master_df.at[index, 'Unit Code'] = row['Unit Code']
@@ -338,7 +339,7 @@ class Form860MCrawler():
                     'Latitude': row['Latitude'],
                     'Longitude': row['Longitude'],
                     'Balancing Authority Code': row['Balancing Authority Code'],
-                    'Initial Date': str(month) + ' ' + str(year)
+                    'Initial Report Date': str(month) + ' ' + str(year)
                 }
 
                 if row['sheet_type'] == 'Operating':
@@ -347,7 +348,7 @@ class Form860MCrawler():
                     new_row['Planned Retirement Month'] = row['Planned Retirement Month']
                     new_row['Planned Retirement Year'] = row['Planned Retirement Year']
                     new_row['Status'] = cur_status
-                    new_row['Initial Status'] = cur_status
+                    new_row['Initial Report Status'] = cur_status
 
 
                 elif row['sheet_type'] == 'Planned':
@@ -357,7 +358,7 @@ class Form860MCrawler():
                     new_row['Cur Planned Operation Year'] = row['Planned Operation Year']
                     new_row['Planned Operation Delta (months)'] = 0
                     new_row['Status'] = cur_status
-                    new_row['Initial Status'] = cur_status
+                    new_row['Initial Report Status'] = cur_status
 
                 elif row['sheet_type'] == 'Retired':
                     new_row['Retirement Month'] = row['Retirement Month']
@@ -365,11 +366,11 @@ class Form860MCrawler():
                     new_row['Operating Month'] = row['Operating Month']
                     new_row['Operating Year'] = row['Operating Year']
                     new_row['Status'] = 'Retired'
-                    new_row['Initial Status'] = 'Retired'
+                    new_row['Initial Report Status'] = 'Retired'
 
                 elif row['sheet_type'] == 'Canceled or Postponed':
                     new_row['Status'] = 'Canceled or Postponed'
-                    new_row['Initial Status'] = 'Canceled or Postponed'
+                    new_row['Initial Report Status'] = 'Canceled or Postponed'
 
                 new_series = pd.Series(new_row, name=index)
 
@@ -377,7 +378,7 @@ class Form860MCrawler():
                 master_df.fillna('', inplace=True)
 
         self.master_df = master_df
-        master_df.to_excel('master_up_to_{}{}.xlsx'.format(month, year))
+        master_df.to_excel('master_through_{}_{}.xlsx'.format(month, year))
 
 
 def init_arg_parser():
@@ -386,7 +387,6 @@ def init_arg_parser():
     """
 
     arg_parser = argparse.ArgumentParser()
-
 
     arg_parser.add_argument(
         "--start",
@@ -399,7 +399,7 @@ def init_arg_parser():
     arg_parser.add_argument(
         "--end",
         type=lambda s: datetime.datetime.strptime(s, '%m-%Y'),
-        help="Month and year to start crawl in the format \'mm-yyyy\'",
+        help="Month and year to end crawl in the format \'mm-yyyy\'",
         default=datetime.datetime(2015, 8, 1),
         required=False
     )
