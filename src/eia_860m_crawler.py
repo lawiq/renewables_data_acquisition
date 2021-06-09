@@ -83,6 +83,10 @@ class Form860MCrawler():
             if 'Balancing Authority Code' not in full_df.columns:
                 full_df['Balancing Authority Code'] = ""
 
+            full_df[['Planned Operation Month']] = full_df[['Planned Operation Month']].fillna('', inplace=True)
+            full_df[['Planned Operation Year']] = full_df[['Planned Operation Year']].fillna('', inplace=True)
+
+
         else:
             raise
 
@@ -95,8 +99,6 @@ class Form860MCrawler():
 
             if index in master_df.index:
                 old_status = master_df.at[index, 'Status']
-                # TO-DO: Fetch and assign variables such as 'Status' once, for later reference
-                #        Construct month + year value ahead of time for later reference
 
                 master_df.at[index, 'Entity ID'] = row['Entity ID']
                 master_df.at[index, 'Entity Name'] = row['Entity Name']
@@ -120,25 +122,20 @@ class Form860MCrawler():
                     master_df.at[index, 'Operating Year'] = row['Operating Year']
                     master_df.at[index, 'Planned Retirement Month'] = row['Planned Retirement Month']
                     master_df.at[index, 'Planned Retirement Year'] = row['Planned Retirement Year']
+
                     if old_status != cur_status:
-                        # # change status from 'Planned' statuses
-                        # if old_status in ['(P) Planned for installation, but regulatory approvals not initiated', '(L) Regulatory approvals pending. Not under construction', '(T) Regulatory approvals received. Not under construction', '(U) Under construction, less than or equal to 50 percent complete', '(V) Under construction, more than 50 percent complete', '(TS) Construction complete, but not yet in commercial operation', '(OT) Other']:
+                        # change status
                         if old_status == "(P) Planned for installation, but regulatory approvals not initiated":
                             master_df.at[index, 'Status P End'] = str(month) + ' ' + str(year)
-
                         elif old_status == "(L) Regulatory approvals pending. Not under construction":
                             master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
-
                         elif old_status == "(T) Regulatory approvals received. Not under construction":
                             master_df.at[index, 'Status T End'] = str(month) + ' ' + str(year)
-
                         elif old_status == "(U) Under construction, less than or equal to 50 percent complete":
                             master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
-
                         elif old_status == "(V) Under construction, more than 50 percent complete":
                             master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
-
-                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                        elif old_status == "(TS) Construction complete, but not yet in commercial operation":
                             master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
                         elif old_status == '(OT) Other':
                             master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
@@ -150,10 +147,9 @@ class Form860MCrawler():
                 elif row['sheet_type'] == 'Planned':
                     if str(row['Planned Operation Month']).strip() and str(row['Planned Operation Year']).strip():
                         master_df.at[index, 'Cur Planned Operation Month'] = row['Planned Operation Month']
+                        master_df.at[index, 'Cur Planned Operation Year'] = row['Planned Operation Year']
 
                         og_planned_operation_month = master_df.at[index, 'OG Planned Operation Month']
-
-                        master_df.at[index, 'Cur Planned Operation Year'] = row['Planned Operation Year']
                         og_planned_operation_year = master_df.at[index, 'OG Planned Operation Year']
 
                         #calculate the difference in months
@@ -162,6 +158,10 @@ class Form860MCrawler():
                             start_date = datetime.datetime(int(og_planned_operation_year), int(og_planned_operation_month), 1)
                             diff = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
                             master_df.at[index, 'Planned Operation Delta (months)'] = diff
+                        # there is no original planned dates when it first reported, so adding to it
+                        else:
+                            master_df.at[index, 'OG Planned Operation Year'] = row['Planned Operation Year']
+                            master_df.at[index, 'OG Planned Operation Month'] = row['Planned Operation Month'] 
 
                     # change of status
                     if old_status != row['Status']:
@@ -186,7 +186,7 @@ class Form860MCrawler():
                             master_df.at[index, 'Status L End'] = str(month) + ' ' + str(year)
                             if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
-                            elif cur_status == "(T) Under construction, less than or equal to 50 percent complete":
+                            elif cur_status == "(T) Regulatory approvals received. Not under construction":
                                 master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
                             elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
                                 master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
@@ -227,7 +227,6 @@ class Form860MCrawler():
                             elif cur_status == "(OT) Other":
                                 master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-
                         elif old_status == "(V) Under construction, more than 50 percent complete":
                             master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
                             if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
@@ -243,7 +242,7 @@ class Form860MCrawler():
                             elif cur_status == "(OT) Other":
                                 master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
 
-                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                        elif old_status == "(TS) Construction complete, but not yet in commercial operation":
                             master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
                             if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
                                 master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
@@ -257,6 +256,21 @@ class Form860MCrawler():
                                 master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
                             elif cur_status == "(OT) Other":
                                 master_df.at[index, 'Status Other Start'] = str(month) + ' ' + str(year)
+
+                        elif old_status == "(OT) Other":
+                            master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
+                            if cur_status == "(P) Planned for installation, but regulatory approvals not initiated":
+                                master_df.at[index, 'Status P Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(L) Regulatory approvals pending. Not under construction":
+                                master_df.at[index, 'Status L Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(T) Regulatory approvals received. Not under construction":
+                                master_df.at[index, 'Status T Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(U) Under construction, less than or equal to 50 percent complete":
+                                master_df.at[index, 'Status U Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(V) Under construction, more than 50 percent complete":
+                                master_df.at[index, 'Status V Start'] = str(month) + ' ' + str(year)
+                            elif cur_status == "(TS) Construction complete, but not yet in commercial operation":
+                                master_df.at[index, 'Status TS Start'] = str(month) + ' ' + str(year)
 
                         master_df.at[index, 'Status'] = cur_status
 
@@ -273,15 +287,15 @@ class Form860MCrawler():
                             master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
                         elif old_status == "(V) Under construction, more than 50 percent complete":
                             master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
-                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                        elif old_status == "(TS) Construction complete, but not yet in commercial operation":
                             master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
-                        elif old_status == '(OT) Other':
+                        elif old_status == "(OT) Other":
                             master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
 
-                    master_df.at[index,'Retirement Month'] = row['Retirement Month']
-                    master_df.at[index,'Retirement Year'] = row['Retirement Year']
-                    master_df.at[index,'Operating Month'] = row['Operating Month']
-                    master_df.at[index,'Operating Year'] = row['Operating Year']
+                    master_df.at[index, 'Retirement Month'] = row['Retirement Month']
+                    master_df.at[index, 'Retirement Year'] = row['Retirement Year']
+                    master_df.at[index, 'Operating Month'] = row['Operating Month']
+                    master_df.at[index, 'Operating Year'] = row['Operating Year']
                     master_df.at[index, 'Status'] = 'Retired'
 
                 elif row['sheet_type'] == 'Canceled or Postponed':
@@ -297,10 +311,11 @@ class Form860MCrawler():
                             master_df.at[index, 'Status U End'] = str(month) + ' ' + str(year)
                         elif old_status == "(V) Under construction, more than 50 percent complete":
                             master_df.at[index, 'Status V End'] = str(month) + ' ' + str(year)
-                        elif old_status == "(TS) Construction complete, but not yet in commercial":
+                        elif old_status == "(TS) Construction complete, but not yet in commercial operation":
                             master_df.at[index, 'Status TS End'] = str(month) + ' ' + str(year)
                         elif old_status == '(OT) Other':
                             master_df.at[index, 'Status Other End'] = str(month) + ' ' + str(year)
+
                     master_df.at[index, 'Status'] = 'Canceled or Postponed'
 
                 master_df = master_df.fillna('')
@@ -308,20 +323,20 @@ class Form860MCrawler():
             else:
                 # new project add to the result data frame
                 new_row = {
-                    'Entity ID': row['Entity ID'], 
-                    'Entity Name': row['Entity Name'], 
+                    'Entity ID': row['Entity ID'],
+                    'Entity Name': row['Entity Name'],
                     'Unit Code': row['Unit Code'],
-                    'Sector': row['Sector'], 
-                    'Plant State': row['Plant State'], 
+                    'Sector': row['Sector'],
+                    'Plant State': row['Plant State'],
                     'Nameplate Capacity (MW)': row['Nameplate Capacity (MW)'],
                     'Net Summer Capacity (MW)': row['Net Summer Capacity (MW)'],
-                    'Net Winter Capacity (MW)': row['Net Winter Capacity (MW)'], 
+                    'Net Winter Capacity (MW)': row['Net Winter Capacity (MW)'],
                     'Technology': row['Technology'],
-                    'Energy Source Code': row['Energy Source Code'], 
-                    'Prime Mover Code': row['Prime Mover Code'], 
-                    'County': row['County'], 
-                    'Latitude': row['Latitude'], 
-                    'Longitude': row['Longitude'], 
+                    'Energy Source Code': row['Energy Source Code'],
+                    'Prime Mover Code': row['Prime Mover Code'],
+                    'County': row['County'],
+                    'Latitude': row['Latitude'],
+                    'Longitude': row['Longitude'],
                     'Balancing Authority Code': row['Balancing Authority Code'],
                     'Initial Date': str(month) + ' ' + str(year)
                 }
@@ -362,6 +377,8 @@ class Form860MCrawler():
                 master_df.fillna('', inplace=True)
 
         self.master_df = master_df
+        master_df.to_excel('master_up_to_{}{}.xlsx'.format(month, year))
+
 
 def init_arg_parser():
     """
@@ -404,14 +421,14 @@ def main(args):
         crawler.end_month,
         crawler.end_year
     )
-    
+
     for month, year in crawler.crawl_range:
         filing_df = crawler.crawl_filing(month, year)
         logging.info('Finished crawling %s %d', month, year)
         crawler.update_master(filing_df, month, year)
         logging.info('Finished updating %s %d', month, year)
 
-    crawler.master_df.to_csv('master_dataframe.csv')
+    crawler.master_df.to_excel('master_dataframe.xlsx')
 
 if __name__ == "__main__":
     parser = init_arg_parser()
