@@ -87,8 +87,7 @@ class Form860MCrawler():
             if 'balancing_authority_code' not in full_df.columns:
                 full_df['balancing_authority_code'] = ""
 
-            full_df[['planned_operation_month']] = full_df[['planned_operation_month']].fillna('')
-            full_df[['planned_operation_year']] = full_df[['planned_operation_year']].fillna('')
+            full_df.fillna('', inplace=True)
 
         else:
             raise
@@ -324,8 +323,6 @@ class Form860MCrawler():
 
                     master_df.at[index, 'status'] = 'Canceled or Postponed'
 
-                #master_df = master_df.fillna('')
-
             else:
                 # new project add to the result data frame
                 new_row = {
@@ -378,13 +375,13 @@ class Form860MCrawler():
                     new_row['status'] = 'Canceled or Postponed'
                     new_row['initial_report_status'] = 'Canceled or Postponed'
 
-                #new_series = pd.Series(new_row, name=index)
-
                 new_rows.append(new_row)
-                #master_df.fillna('', inplace=True)
 
-        new_rows_df = pd.DataFrame(new_rows).set_index('unique_id')
-        self.master_df = master_df.append(new_rows_df)
+        if new_rows:
+            new_rows_df = pd.DataFrame(new_rows).set_index('unique_id')
+            master_df = master_df.append(new_rows_df)
+
+        self.master_df = master_df
         master_df.to_excel('master_through_{}_{}.xlsx'.format(month, year))
 
 
