@@ -2,6 +2,7 @@ import argparse
 import calendar
 import datetime
 import logging
+import time
 
 import requests
 import pandas as pd
@@ -33,18 +34,8 @@ class Form860MCrawler():
                 month_iter += 1
             start_date = start_date.replace(month=month_iter, year=year_iter)
 
-        # while month_iter <= self.end_month and year_iter <= self.end_year:
-        #     crawl_range.append((calendar.month_name[month_iter], year_iter))
-        #     if month_iter == 12:
-        #         month_iter = 1
-        #         year_iter += 1
-        #     else:
-        #         month_iter += 1
-
         self.crawl_range = crawl_range
-        print(crawl_range)
-
-        self.master_df = pd.DataFrame(columns=settings.FIELDS)
+        self.master_df = pd.DataFrame(columns=settings.FIELDS).set_index('unique_id')
 
     def crawl_filing(self, month, year):
         """
@@ -99,7 +90,6 @@ class Form860MCrawler():
             full_df[['planned_operation_month']] = full_df[['planned_operation_month']].fillna('')
             full_df[['planned_operation_year']] = full_df[['planned_operation_year']].fillna('')
 
-
         else:
             raise
 
@@ -107,6 +97,7 @@ class Form860MCrawler():
 
     def update_master(self, filing_df, month, year):
         master_df = self.master_df
+        new_rows = []
         for row in filing_df.itertuples():
             index = row[0]
             cur_status = row.status
@@ -333,11 +324,12 @@ class Form860MCrawler():
 
                     master_df.at[index, 'status'] = 'Canceled or Postponed'
 
-                master_df = master_df.fillna('')
+                #master_df = master_df.fillna('')
 
             else:
                 # new project add to the result data frame
                 new_row = {
+                    'unique_id': index,
                     'entity_id': row.entity_id,
                     'entity_name': row.entity_name,
                     'unit_code': row.unit_code,
@@ -386,12 +378,13 @@ class Form860MCrawler():
                     new_row['status'] = 'Canceled or Postponed'
                     new_row['initial_report_status'] = 'Canceled or Postponed'
 
-                new_series = pd.Series(new_row, name=index)
+                #new_series = pd.Series(new_row, name=index)
 
-                master_df = master_df.append(new_series)
-                master_df.fillna('', inplace=True)
+                new_rows.append(new_row)
+                #master_df.fillna('', inplace=True)
 
-        self.master_df = master_df
+        new_rows_df = pd.DataFrame(new_rows).set_index('unique_id')
+        self.master_df = master_df.append(new_rows_df)
         master_df.to_excel('master_through_{}_{}.xlsx'.format(month, year))
 
 
@@ -437,12 +430,22 @@ def main(args):
     )
 
     for month, year in crawler.crawl_range:
+        crawl_start = time.time()
         filing_df = crawler.crawl_filing(month, year)
-        logging.info('Finished crawling %s %d', month, year)
+        crawl_time = time.time() - crawl_start
+        logging.info('Successfully crawled %s, %d in %d seconds', month, year, crawl_time)
+        update_start = time.time()
         crawler.update_master(filing_df, month, year)
-        logging.info('Finished updating %s %d', month, year)
+        update_time = time.time() - update_start
+        logging.info('Successfully updated %s, %d in %d seconds', month, year, update_time)
 
     crawler.master_df.to_excel('master_dataframe.xlsx')
+    logging.info('Successfully processed %d/%d through %d/%d',
+        crawler.start_month,
+        crawler.start_year,
+        crawler.end_month,
+        crawler.end_year
+    )
 
 if __name__ == "__main__":
     parser = init_arg_parser()

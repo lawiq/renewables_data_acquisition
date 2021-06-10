@@ -5,6 +5,7 @@ EIA_ARCHIVE_URL = "https://www.eia.gov/electricity/data/eia860m/archive/xls/{}_g
 EIA_RECENT_URL = "https://www.eia.gov/electricity/data/eia860m/xls/{}_generator{}.xlsx"
 
 FIELDS = [
+    'unique_id',
     'entity_id',
     'entity_name',
     'unit_code',
