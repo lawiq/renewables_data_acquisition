@@ -35,7 +35,10 @@ class Form860MCrawler():
             start_date = start_date.replace(month=month_iter, year=year_iter)
 
         self.crawl_range = crawl_range
-        self.master_df = pd.DataFrame(columns=settings.FIELDS).set_index('unique_id')
+        old_file = pd.ExcelFile('master_through_February_2021.xlsx')
+        df = old_file.parse().set_index('unique_id')
+        self.master_df = df
+        # pd.DataFrame(columns=settings.FIELDS).set_index('unique_id')
 
     def crawl_filing(self, month, year):
         """
@@ -45,18 +48,21 @@ class Form860MCrawler():
         archive_url = settings.EIA_ARCHIVE_URL
         recent_url = settings.EIA_RECENT_URL
 
-        response = requests.get(archive_url.format(month.lower(), year))
+        response = requests.get(recent_url.format(month.lower(), year))
 
         if response.status_code == 200:
             file_name = '{}_generator{}.xlsx'.format(month, year)
             with open(file_name, 'wb') as file:
                 file.write(response.content)
             excel_file = pd.ExcelFile(file_name)
-            skip_row_num = 1
+            skip_row_num = settings.SKIP_ROW_MAPPING[year][datetime.datetime.strptime(month, "%B").month]
             sheet_dfs = []
             for sheet in settings.SHEETS:
                 temp_df = excel_file.parse(sheet, skiprows=skip_row_num)
                 temp_df.drop(temp_df.tail(1).index, inplace=True)
+                if skip_row_num == 2:
+                    # drop the last row again because it's empty
+                    temp_df.drop(temp_df.tail(1).index, inplace=True)
                 # strip the space out of column names, remove '(' and ')' change to lower case and replace space with underscore
                 temp_df.rename(columns=lambda x: "_".join(x.strip().replace('(', '').replace(')', '').lower().split()), inplace=True)
                 # change column name to "sector" from "sector_name"
@@ -86,11 +92,10 @@ class Form860MCrawler():
                 full_df['longitude'] = ""
             if 'balancing_authority_code' not in full_df.columns:
                 full_df['balancing_authority_code'] = ""
-
-            full_df.fillna('', inplace=True)
-
         else:
             raise
+
+        full_df.fillna('', inplace=True)
 
         return full_df
 
@@ -376,11 +381,11 @@ class Form860MCrawler():
                     new_row['initial_report_status'] = 'Canceled or Postponed'
 
                 new_rows.append(new_row)
-
         if new_rows:
             new_rows_df = pd.DataFrame(new_rows).set_index('unique_id')
             master_df = master_df.append(new_rows_df)
-
+        master_df.fillna('', inplace=True)
+        master_df.sort_index(inplace=True)
         self.master_df = master_df
         master_df.to_excel('master_through_{}_{}.xlsx'.format(month, year))
 
